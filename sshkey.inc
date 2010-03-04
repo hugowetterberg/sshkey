@@ -45,6 +45,56 @@ function sshkey_public_key_parse($pubkey) {
 }
 
 /**
+ * Checks a key against the ubuntu/debian blacklist using ssh-vulnkey.
+ *
+ * @param string $pubkey
+ * @return bool|object
+ *  Returns TRUE if the key is blacklisted. FALSE if the key has been verified
+ *  as non-blacklisted. Or NULL if we couldn't verify the key.
+ */
+function sshkey_public_key_blacklisted($pubkey) {
+  $vulnkey = variable_get('sshkey_ssh_vulnkey', '');
+  $blacklisted = NULL;
+
+  if (!empty($vulnkey) && is_executable($vulnkey)) {
+    $descriptorspec = array(
+       0 => array("pipe", "r"), // stdin
+       1 => array("pipe", "w"), // stdout
+    );
+    // Open ssh-vulnkey in verbose mode so that we get output
+    // even when the key isn't blacklisted.
+    $process = proc_open(sprintf('%s -v -', $vulnkey), $descriptorspec, $pipes);
+
+    // Write the public key to stdin
+    fwrite($pipes[0], $pubkey);
+    fclose($pipes[0]);
+
+    // Get result from stdout
+    $result = file_get_contents($pipes[1]);
+    fclose($pipes[1]);
+
+    // Close process handle and get the return code
+    $retcode = proc_close($process);
+    // Retcode 0 means that the code is blacklisted
+    if ($retcode == 0) {
+      $blacklisted = TRUE;
+    }
+    else {
+      // Check response so that we know if the key really has been checked
+      // we're looking for the response message 'Not blacklisted' as it could
+      // also be 'Unknown (blacklist file not installed)' and in that case
+      // we'll just let the response ($blacklisted) remain as NULL.
+      list($line) = explode("\n", $result);
+      list($file, $line_num, $message, $key) = explode($line, 4);
+      if (trim($message) == 'Not blacklisted') {
+        $blacklisted = FALSE;
+      }
+    }
+  }
+  return $blacklisted;
+}
+
+/**
  * Migrates key files to a new directory.
  *
  * @param string $directory 
