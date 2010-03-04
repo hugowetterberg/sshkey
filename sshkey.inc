@@ -70,7 +70,7 @@ function sshkey_public_key_blacklisted($pubkey) {
     fclose($pipes[0]);
 
     // Get result from stdout
-    $result = file_get_contents($pipes[1]);
+    $result = stream_get_contents($pipes[1]);
     fclose($pipes[1]);
 
     // Close process handle and get the return code
@@ -85,7 +85,7 @@ function sshkey_public_key_blacklisted($pubkey) {
       // also be 'Unknown (blacklist file not installed)' and in that case
       // we'll just let the response ($blacklisted) remain as NULL.
       list($line) = explode("\n", $result);
-      list($file, $line_num, $message, $key) = explode($line, 4);
+      list($file, $line_num, $message, $key) = explode(':', $line, 4);
       if (trim($message) == 'Not blacklisted') {
         $blacklisted = FALSE;
       }

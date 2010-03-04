@@ -104,6 +104,11 @@ function sshkey_add_public_key_form_validate($form, $form_state) {
     // Parse the key
     $pubkey = sshkey_public_key_parse($values['public_key']);
 
+    // Check if the key is blacklisted.
+    if (sshkey_public_key_blacklisted($pubkey['pubkey'])) {
+      form_set_error('public_key', t('The key you have used is blacklisted'));
+    }
+
     // Check if the key exists
     $exists = sshkey_public_key_load($pubkey['fingerprint']);
     if ($exists) {
