@@ -1,0 +1,50 @@
+<?php
+
+function sshkey_install() {
+  drupal_install_schema('sshkey');
+}
+
+function sshkey_uninstall() {
+  drupal_uninstall_schema('sshkey');
+}
+
+function sshkey_schema() {
+  $schema = array();
+
+  $schema['sshkey'] = array(
+    'description' => 'Stores ssh keys for users',
+    'fields' => array(
+      'fingerprint' => array(
+        'description' => 'The md5 hash for the public key',
+        'type' => 'char',
+        'length' => 32,
+        'not null' => TRUE,
+      ),
+      'name' => array(
+        'description' => 'The name of the key file.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => ''
+      ),
+      'created' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The time that the key was created, as a Unix timestamp.',
+      ),
+      'uid' => array(
+        'description' => 'The account associated with the public key.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('fingerprint'),
+    'indexes' => array(
+      'uid' => array('uid'),
+    ),
+  );
+
+  return $schema;
+}

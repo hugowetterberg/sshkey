@@ -1,0 +1,7 @@
+#sshkey-public-key-wrapper .add-public-key-form {
+  padding-top: 1em;
+}
+
+#sshkey-public-key-wrapper .sshkey-no-public-keys {
+  text-align: center;
+}

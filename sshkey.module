@@ -1,0 +1,329 @@
+<?php
+
+define('SSHKEY_DUPLICATE_KEY_ERROR', 1);
+define('SSHKEY_PARSE_ERROR', 2);
+define('SSHKEY_IO_FAILURE', 4);
+define('SSHKEY_TAMPERING', 8);
+define('SSHKEY_NOT_FOUND', 404);
+define('SSHKEY_ACCESS_DENIED', 401);
+
+/**
+ * Implementation of hook_perm().
+ */
+function sshkey_perm() {
+  $perm = array(
+    'administer sshkey',
+    'register sshkeys',
+  );
+  return $perm;
+}
+
+/**
+ * Implementation of hook_menu().
+ */
+function sshkey_menu() {
+  $menu = array();
+
+  $menu['user/%user/sshkeys'] = array(
+    'title' => 'SSH Keys',
+    'page callback' => 'sshkey_page_list_public_keys',
+    'page arguments' => array(1),
+    'access callback' => 'sshkey_edit_keys_access',
+    'access arguments' => array(1),
+    'file' => 'sshkey.pages.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  $menu['user/%user/sshkeys/list'] = array(
+    'title' => 'SSH Keys',
+    'page callback' => 'sshkey_page_list_public_keys',
+    'page arguments' => array(1),
+    'access callback' => 'sshkey_edit_keys_access',
+    'access arguments' => array(1),
+    'file' => 'sshkey.pages.inc',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+  );
+
+  $menu['user/%user/sshkeys/%sshkey_public_key/edit'] = array(
+    'title' => 'Edit',
+    'page callback' => 'sshkey_page_edit_public_key',
+    'page arguments' => array(3),
+    'access callback' => 'sshkey_edit_keys_access',
+    'access arguments' => array(1, 3),
+    'file' => 'sshkey.pages.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 9,
+  );
+
+  $menu['user/%user/sshkeys/%sshkey_public_key/delete'] = array(
+    'title' => 'Delete',
+    'page callback' => 'sshkey_page_delete_public_key',
+    'page arguments' => array(3),
+    'access callback' => 'sshkey_edit_keys_access',
+    'access arguments' => array(1, 3),
+    'file' => 'sshkey.pages.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 10,
+  );
+
+  $menu['admin/user/sshkeys'] = array(
+    'title' => 'SSH Key settings',
+    'description' => 'Configure the SSH key settings for user accounts',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('sshkey_settings_form'),
+    'access arguments' => array('administer sshkeys'),
+    'file' => 'sshkey.admin.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $menu;
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function sshkey_theme() {
+  $theme = array();
+
+  // Providing a wrapper theme for the table to allow individual styling.
+  $theme['sshkey_table'] = array(
+    'arguments' => array(
+      'header' => array(),
+      'rows' => array(),
+      'attributes' => array(),
+      'caption' => NULL,
+    ),
+  );
+
+  $theme['sshkey_public_key_list_page'] = array(
+    'template' => 'sshkey_public_key_list_page',
+    'arguments' => array(
+      'table' => '',
+      'form' => '',
+    ),
+  );
+
+  return $theme;
+}
+
+/**
+ * Theme function for the ssh key table. @see theme_table().
+ */
+function theme_sshkey_table($header, $rows, $attributes = array(), $caption = NULL) {
+  // Check if we should display the "on empty"-message.
+  if (empty($rows)) {
+    $rows[] = array(
+      'empty' => array(
+        'data'  => t('No keys have been added yet.'),
+        'class' => 'sshkey-no-public-keys',
+        'colspan' => count($header),
+      ),
+    );
+  }
+
+  return theme('table', $header, $rows, $attributes, $caption);
+}
+
+/**
+ * Returns the directory used for storing public keys.
+ *
+ * @return string
+ */
+function sshkey_get_key_directory() {
+  $default = file_directory_path() . '/sshkeys';
+  return variable_get('sshkey_key_directory', $default);
+}
+
+/**
+ * Changes the directory that is used for storing public keys.
+ *
+ * @param string $directory
+ *  The new directory that public keys should be stored in.
+ * @param bool $move_keys
+ *
+ * @return void
+ * @throws Exception
+ *  Throws a exception if: the new directory doesn't exist and cannot be
+ *  created (error code SSHKEY_NOT_FOUND); the new directory isn't
+ *  writeable (error code SSHKEY_ACCESS_DENIED); $move_keys is TRUE and
+ *  the current directory isn't readable (error code SSHKEY_ACCESS_DENIED);
+ *  all keys couldn't be copied to the new directory (error code
+ *  SSHKEY_IO_FAILURE).
+ */
+function sshkey_set_key_directory($directory, $move_keys=TRUE) {
+  if (!file_exists($directory)) {
+    if (!mkdir($directory, 0777, TRUE)) {
+      throw new Exception('The directory does not exist and could not be created', SSHKEY_NOT_FOUND);
+    }
+  }
+  if (!is_writable($directory)) {
+    throw new Exception('The directory is not writeable', SSHKEY_ACCESS_DENIED);
+  }
+
+  if ($move_keys) {
+    module_load_include('inc', 'sshkey');
+    sshkey_migrate_key_files($directory);
+  }
+
+  variable_set('sshkey_key_directory', $directory);
+}
+
+/**
+ * Access callback used for checking if the currently logged in user may edit
+ * the ssh-keys for the given account. Access is granted if the user has the
+ * 'register sshkeys' permission AND (may edit the user account OR has the
+ * permission 'administer sshkey').
+ *
+ * @param object $account
+ * @param array $key
+ * @return bool
+ *  TRUE if access is granted, otherwise FALSE is returned.
+ */
+function sshkey_edit_keys_access($account, $key=NULL) {
+  $access = FALSE;
+  if (!$key || $account->uid == $key['uid']) {
+    $access = user_edit_access($account);
+    $access = $access || user_access('administer sshkey');
+    $access = $access && user_access('register sshkeys');
+  }
+  return $access;
+}
+
+/**
+ * Lists public keys for a user.
+ *
+ * @param int $uid
+ * @return array
+ */
+function sshkey_user_public_keys_list($uid) {
+  $keys = array();
+
+  $res = db_query("SELECT * FROM {sshkey} WHERE uid=%d", array(
+    ':uid' => $uid,
+  ));
+  while ($key = db_fetch_array($res)) {
+    $keys[] = $key;
+  }
+  return $keys;
+}
+
+/**
+ * Loads a public key from the database.
+ *
+ * @param string $fingerprint
+ * @return array
+ */
+function sshkey_public_key_load($fingerprint) {
+  $res = db_query("SELECT * FROM {sshkey} WHERE fingerprint='%s'", array(
+    ':fingerprint' => $fingerprint,
+  ));
+  $record = db_fetch_array($res);
+  if (!$record) {
+    $record = FALSE;
+  }
+  return $record;
+}
+
+/**
+ * Saves a public key.
+ *
+ * @param int $uid
+ *  The user id to associate the public key with.
+ * @param string $pubkey
+ *  The public key.
+ * @param string $name
+ *  Optional. The name of the public key. The comment from the public key will
+ *  be used if no name is supplied.
+ * @return array
+ *  An array containing the fingerprint, name and uid for the key.
+ * @throws Exception
+ *  A exception is thrown if the public key already is registered (error code
+ *  SSHKEY_DUPLICATE_KEY_ERROR) or if the public key can't be parsed (error
+ *  code SSHKEY_PARSE_ERROR).
+ */
+function sshkey_public_key_save($uid, $pubkey, $name=NULL) {
+  module_load_include('inc', 'sshkey');
+  $pubkey = sshkey_public_key_parse($pubkey);
+
+  if (empty($name)) {
+    $name = $pubkey['comment'];
+  }
+  if (drupal_strlen($name) > 255) {
+    $name = drupal_substr($name, 0, 255);
+  }
+
+  $exists = sshkey_public_key_load($pubkey['fingerprint']);
+  if ($exists) {
+    throw new Exception('The public key is already registered', SSHKEY_DUPLICATE_KEY_ERROR);
+  }
+
+  $record = array(
+    'fingerprint' => $pubkey['fingerprint'],
+    'name' => $name,
+    'uid' => $uid,
+    'created' => time(),
+  );
+  drupal_write_record('sshkey', $record);
+  file_put_contents(sshkey_path_to_public_key($pubkey['fingerprint']), $pubkey['pubkey']);
+
+  module_invoke_all('sshkey_public_key_created', $record);
+
+  return $record;
+}
+
+/**
+ * Gets the path to a public key file.
+ *
+ * @param string $fingerprint
+ * @return string
+ */
+function sshkey_path_to_public_key($fingerprint) {
+  return sshkey_get_key_directory() . '/' . $fingerprint . '.pub';
+}
+
+/**
+ * Loads the key data from the public key file.
+ *
+ * @param string $fingerprint 
+ * @return array
+ *  An array containing the algo, key, comment, fingerprint, decoded key data as data and the sanitized
+ *  public key as pubkey.
+ * @throws Exception
+ *  A exception is thrown if the public key file can't be parsed (error code
+ *  SSHKEY_PARSE_ERROR). Or if the key file has been manipulated (error code
+ *  SSHKEY_TAMPERING).
+ */
+function sshkey_get_public_key_data($fingerprint) {
+  module_load_include('inc', 'sshkey');
+  $path = sshkey_path_to_public_key($fingerprint);
+  $pubkey = FALSE;
+
+  if (file_exists($path)) {
+    $raw_pubkey = file_get_contents($path);
+    $pubkey = sshkey_public_key_parse($raw_pubkey);
+
+    if ($pubkey['fingerprint'] !== $fingerprint) {
+      throw new Exception(t('The public key file has been tampered with'), SSHKEY_TAMPERING);
+    }
+  }
+
+  return $pubkey;
+}
+
+/**
+ * Deletes a public key from the system.
+ *
+ * @param string $fingerprint
+ * @return void
+ */
+function sshkey_public_key_delete($fingerprint) {
+  $key = sshkey_public_key_load($fingerprint);
+  if ($key) {
+    db_query("DELETE FROM {sshkey} WHERE fingerprint='%s'", array(
+      ':fingerprint' => $fingerprint,
+    ));
+    unlink(sshkey_path_to_public_key($fingerprint));
+
+    module_invoke_all('sshkey_public_key_deleted', $key);
+  }
+}
