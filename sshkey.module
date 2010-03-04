@@ -272,6 +272,21 @@ function sshkey_public_key_save($uid, $pubkey, $name=NULL) {
 }
 
 /**
+ * Updates the name of a public key.
+ *
+ * @param string $fingerprint 
+ * @param string $name 
+ * @return void
+ */
+function sshkey_public_key_update($fingerprint, $name) {
+  $record = array(
+    'fingerprint' => $fingerprint,
+    'name' => $name,
+  );
+  drupal_write_record('sshkey', $record, array('fingerprint'));
+}
+
+/**
  * Gets the path to a public key file.
  *
  * @param string $fingerprint

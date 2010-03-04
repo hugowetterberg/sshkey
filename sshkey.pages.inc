@@ -152,7 +152,64 @@ function sshkey_page_edit_public_key($key) {
 
 function sshkey_edit_public_key_form($form_state, $key) {
   $form = array();
+  $data = sshkey_get_public_key_data($key['fingerprint']);
+
+  $segmented = array();
+  for ($i=0; $i<strlen($key['fingerprint']); $i+=2) {
+    $segmented[] = substr($key['fingerprint'], $i, 2);
+  }
+  $readable_fingerprint = join($segmented, ':');
+
+  $form['key_object'] = array(
+    '#type' => 'value',
+    '#value' => $data,
+  );
+
+  $form['name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Name'),
+    '#description' => t('The name that should be used for this key.'),
+    '#size' => 40,
+    '#maxlength' => 255,
+    '#default_value' => $key['name'],
+  );
+
+  $form['created'] = array(
+    '#type' => 'item',
+    '#title' => t('Created'),
+    '#value' => format_date($key['created']),
+  );
+
+  $form['fingerprint'] = array(
+    '#type' => 'item',
+    '#title' => t('Fingerprint'),
+    '#value' => $readable_fingerprint,
+  );
+
+  $form['public_key'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Public key'),
+    '#disabled' => TRUE,
+    '#value' => $data['pubkey'],
+    '#rows' => 8,
+  );
+
+  $form['save'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+
   return $form;
+}
+
+function sshkey_edit_public_key_form_submit($form, $form_state) {
+  $values = $form_state['values'];
+
+  $key = $values['key_object'];
+  $name = empty($values['name']) ? $key['comment'] : $values['name'];
+
+  sshkey_public_key_update($key['fingerprint'], $name);
+  drupal_goto();
 }
 
 function sshkey_page_delete_public_key($key) {
@@ -192,4 +249,5 @@ function sshkey_delete_public_key_form($form_state, $key) {
 function sshkey_delete_public_key_form_submit($form, $form_state) {
   $key = $form_state['values']['key_object'];
   sshkey_public_key_delete($key['fingerprint']);
+  drupal_goto();
 }
