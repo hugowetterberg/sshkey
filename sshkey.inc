@@ -97,11 +97,11 @@ function sshkey_public_key_blacklisted($pubkey) {
 /**
  * Migrates key files to a new directory.
  *
- * @param string $directory 
+ * @param string $directory
  * @return void
  * @throws Exception
  *  Throws a exception if: the current directory isn't readable (error code
- *  SSHKEY_ACCESS_DENIED); all keys couldn't be copied to the new 
+ *  SSHKEY_ACCESS_DENIED); all keys couldn't be copied to the new
  *  directory (error code SSHKEY_IO_FAILURE).
  */
 function sshkey_migrate_key_files($directory) {
@@ -113,7 +113,7 @@ function sshkey_migrate_key_files($directory) {
       throw new Exception(t('Move keys was specified but the current directory cannot be read from'), SSHKEY_ACCESS_DENIED);
     }
     $remove = array();
-    
+
     // Copy all public key files to the new directory.
     $dh = opendir($current_directory);
     while ($file = readdir($dh)) {
