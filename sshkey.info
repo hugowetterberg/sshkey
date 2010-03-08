@@ -1,4 +1,5 @@
 name = "SSH Key"
+package = "SSH Keys"
 description = "Manages public keys for user accounts"
 core = "6.x"
 php = "5.x"
