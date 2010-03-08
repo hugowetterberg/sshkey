@@ -243,7 +243,10 @@ function sshkey_public_key_load($fingerprint) {
  */
 function sshkey_public_key_save($uid, $pubkey, $name=NULL) {
   module_load_include('inc', 'sshkey');
-  $pubkey = sshkey_public_key_parse($pubkey);
+
+  if (is_string($pubkey)) {
+    $pubkey = sshkey_public_key_parse($pubkey);
+  }
 
   if (empty($name)) {
     $name = $pubkey['comment'];
